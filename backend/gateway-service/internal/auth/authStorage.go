@@ -1,4 +1,4 @@
-package main
+package auth
 
 import (
 	"context"
@@ -19,17 +19,19 @@ type AuthStorage struct {
 	db *sql.DB
 }
 
+var authStorage *AuthStorage
+
 const schema = `
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS service (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
+    service_name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 );`
 
-func InitializeSchema(db *sql.DB) error {
-	_, err := db.Exec(schema)
+func initializeSchema() error {
+	_, err := authStorage.db.Exec(schema)
 	return err
 }
 
@@ -53,56 +55,96 @@ func newDatabase(dbPath string) (*sql.DB, error) {
 	return db, nil
 }
 
-func NewAuthStorage(db *sql.DB) *AuthStorage {
-	return &AuthStorage{db: db}
+func InitAuthStorage(dbPath string) error {
+	db, err := newDatabase(dbPath)
+	if err != nil {
+		return err
+	}
+	authStorage = &AuthStorage{db: db, jwtSecret: []byte("test-secret"), accessTokenTTL: 25}
+	err = initializeSchema()
+
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func (r *AuthStorage) Create(ctx context.Context, user *User) error {
+func CloseAuthStorage() {
+	authStorage.db.Close()
+}
+
+func CreateService(ctx context.Context, ServiceName string, PasswordHash string) (*ServiceDesc, error) {
 
 	query := `
-        INSERT INTO users (email, name, password_hash, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO service (name, password_hash, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
     `
+	var service ServiceDesc
+
 	now := time.Now()
-	result, err := r.db.ExecContext(ctx, query,
-		user.Name,
-		user.PasswordHash,
+	result, err := authStorage.db.ExecContext(ctx, query,
+		ServiceName,
+		PasswordHash,
 		now,
 		now,
 	)
 	if err != nil {
 		// Check for unique constraint violation
 		if isUniqueConstraintError(err) {
-			return ErrDuplicateKey
+			return nil, ErrDuplicateKey
 		}
-		return err
+		return nil, err
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	user.ID = id
-	user.CreatedAt = now
-	user.UpdatedAt = now
-	return nil
+	service.Id = string(id)
+	service.ServiceName = ServiceName
+	service.Password = PasswordHash
+	service.CreatedAt = now
+	service.UpdatedAt = now
+
+	return &service, nil
 }
 
-func (r *AuthStorage) Authentication(ctx context.Context, user *User) (bool, error) {
-	// Use a prepared statement for better performance and security
+func GetServiceByName(serviceName string) (*ServiceDesc, error) {
+	query := `SELECT id, service_name, password_hash, created_at, updated_at FROM service WHERE email = $1`
+	var service ServiceDesc
+	var lastLogin sql.NullTime
+	err := authStorage.db.QueryRow(query, serviceName).Scan(
+		&service.Id,
+		&service.ServiceName,
+		&service.Password,
+		&service.CreatedAt,
+		&lastLogin,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if lastLogin.Valid {
+		service.UpdatedAt = lastLogin.Time
+	}
+	return &service, nil
+}
+
+func CheckAuthentication(ctx context.Context, serviceName string, password string) (bool, error) {
+
 	query := `
-        SELECT FROM users (name, password_hash)
+        SELECT FROM service (name, password_hash)
         VALUES (?, ?)
     `
-	_, err := r.db.ExecContext(ctx, query,
-		user.Name,
-		user.PasswordHash,
+	_, err := authStorage.db.ExecContext(ctx, query,
+		serviceName,
+		password,
 	)
 
 	if err != nil {
 		return false, err
 	}
+
 	return true, nil
 }
 

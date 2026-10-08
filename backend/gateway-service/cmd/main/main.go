@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+
+	"internal/auth"
 )
 
 type ButtonEvents struct {
@@ -131,14 +133,24 @@ func main() {
 	if err != nil {
 		fmt.Println("Could not create ProducerState")
 		//log.Printf("")
+		return
 	}
 	defer producerState.Close()
+
+	err = auth.InitAuthStorage("authStoarge")
+	if err != nil {
+		fmt.Println("Could not init AuthStorage")
+		//log.Printf("")
+		return
+	}
 
 	wg.Add(1)
 	go producerState.mainLoop(&wg)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/post_buttons_events", ButtonEventsHandler(producerState.InputCh))
+	mux.HandleFunc("/login", auth.LoginHandler())
+
 	loggedMux := loggingMiddleware(mux)
 
 	err = http.ListenAndServe(":"+APIPort, loggedMux)
