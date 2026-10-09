@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/joho/godotenv"
 
 	"internal/auth"
 )
@@ -105,6 +106,20 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 		log.Printf("🏁 Завершено за %v", time.Since(start))
 	})
+}
+
+func loadEnv() {
+
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using environment variables")
+	}
+
+	requiredVars := []string{"DATABASE_URL", "JWT_SECRET"}
+	for _, v := range requiredVars {
+		if os.Getenv(v) == "" {
+			log.Fatalf("Required environment variable %s is not set", v)
+		}
+	}
 }
 
 func main() {

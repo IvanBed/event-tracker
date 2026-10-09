@@ -15,11 +15,9 @@ var (
 	ErrInvalidInput = errors.New("invalid input")
 )
 
-type AuthStorage struct {
+type ServiceRepo struct {
 	db *sql.DB
 }
-
-var authStorage *AuthStorage
 
 const schema = `
 CREATE TABLE IF NOT EXISTS service (
@@ -30,8 +28,8 @@ CREATE TABLE IF NOT EXISTS service (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 );`
 
-func initializeSchema() error {
-	_, err := authStorage.db.Exec(schema)
+func (serviceRepo *ServiceRepo) initializeSchema() error {
+	_, err := serviceRepo.db.Exec(schema)
 	return err
 }
 
@@ -55,25 +53,27 @@ func newDatabase(dbPath string) (*sql.DB, error) {
 	return db, nil
 }
 
-func InitAuthStorage(dbPath string) error {
+func InitServiceRepo(dbPath string) (*ServiceRepo, error) {
+	var serviceRepo *ServiceRepo
+
 	db, err := newDatabase(dbPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	authStorage = &AuthStorage{db: db, jwtSecret: []byte("test-secret"), accessTokenTTL: 25}
-	err = initializeSchema()
+	serviceRepo = &ServiceRepo{db: db}
+	err = serviceRepo.initializeSchema()
 
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return serviceRepo, nil
 }
 
-func CloseAuthStorage() {
-	authStorage.db.Close()
+func (serviceRepo *ServiceRepo) CloseServiceRepo() {
+	serviceRepo.db.Close()
 }
 
-func CreateService(ctx context.Context, ServiceName string, PasswordHash string) (*ServiceDesc, error) {
+func (serviceRepo *ServiceRepo) CreateService(ctx context.Context, ServiceName string, PasswordHash string) (*ServiceDesc, error) {
 
 	query := `
         INSERT INTO service (name, password_hash, created_at, updated_at)
@@ -82,7 +82,7 @@ func CreateService(ctx context.Context, ServiceName string, PasswordHash string)
 	var service ServiceDesc
 
 	now := time.Now()
-	result, err := authStorage.db.ExecContext(ctx, query,
+	result, err := serviceRepo.db.ExecContext(ctx, query,
 		ServiceName,
 		PasswordHash,
 		now,
@@ -110,11 +110,11 @@ func CreateService(ctx context.Context, ServiceName string, PasswordHash string)
 	return &service, nil
 }
 
-func GetServiceByName(serviceName string) (*ServiceDesc, error) {
+func (serviceRepo *ServiceRepo) GetServiceByName(serviceName string) (*ServiceDesc, error) {
 	query := `SELECT id, service_name, password_hash, created_at, updated_at FROM service WHERE email = $1`
 	var service ServiceDesc
 	var lastLogin sql.NullTime
-	err := authStorage.db.QueryRow(query, serviceName).Scan(
+	err := serviceRepo.db.QueryRow(query, serviceName).Scan(
 		&service.Id,
 		&service.ServiceName,
 		&service.Password,
@@ -128,24 +128,6 @@ func GetServiceByName(serviceName string) (*ServiceDesc, error) {
 		service.UpdatedAt = lastLogin.Time
 	}
 	return &service, nil
-}
-
-func CheckAuthentication(ctx context.Context, serviceName string, password string) (bool, error) {
-
-	query := `
-        SELECT FROM service (name, password_hash)
-        VALUES (?, ?)
-    `
-	_, err := authStorage.db.ExecContext(ctx, query,
-		serviceName,
-		password,
-	)
-
-	if err != nil {
-		return false, err
-	}
-
-	return true, nil
 }
 
 func isUniqueConstraintError(err error) bool {
