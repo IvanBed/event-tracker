@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"time"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
@@ -14,10 +12,6 @@ var (
 	ErrDuplicateKey = errors.New("duplicate key violation")
 	ErrInvalidInput = errors.New("invalid input")
 )
-
-type ServiceRepo struct {
-	db *sql.DB
-}
 
 const schema = `
 CREATE TABLE IF NOT EXISTS service (
@@ -28,52 +22,15 @@ CREATE TABLE IF NOT EXISTS service (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 );`
 
-func (serviceRepo *ServiceRepo) initializeSchema() error {
-	_, err := serviceRepo.db.Exec(schema)
-	return err
+type ServiceRepository struct {
+	db *sql.DB
 }
 
-func newDatabase(dbPath string) (*sql.DB, error) {
-	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_cache_size=-64000&_foreign_keys=ON"
-
-	db, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		return nil, err
-	}
-
-	db.SetMaxOpenConns(1) // SQLite supports only one writer at a time
-	db.SetMaxIdleConns(1)
-	db.SetConnMaxLifetime(time.Hour)
-
-	if err := db.Ping(); err != nil {
-		db.Close()
-		return nil, err
-	}
-
-	return db, nil
+func InitServiceRepo(db *sql.DB) *ServiceRepository {
+	return &ServiceRepository{db: db}
 }
 
-func InitServiceRepo(dbPath string) (*ServiceRepo, error) {
-	var serviceRepo *ServiceRepo
-
-	db, err := newDatabase(dbPath)
-	if err != nil {
-		return nil, err
-	}
-	serviceRepo = &ServiceRepo{db: db}
-	err = serviceRepo.initializeSchema()
-
-	if err != nil {
-		return nil, err
-	}
-	return serviceRepo, nil
-}
-
-func (serviceRepo *ServiceRepo) CloseServiceRepo() {
-	serviceRepo.db.Close()
-}
-
-func (serviceRepo *ServiceRepo) CreateService(ctx context.Context, ServiceName string, PasswordHash string) (*ServiceDesc, error) {
+func (serviceRepo *ServiceRepository) CreateService(ctx context.Context, ServiceName string, PasswordHash string) (*ServiceDesc, error) {
 
 	query := `
         INSERT INTO service (name, password_hash, created_at, updated_at)
@@ -110,7 +67,7 @@ func (serviceRepo *ServiceRepo) CreateService(ctx context.Context, ServiceName s
 	return &service, nil
 }
 
-func (serviceRepo *ServiceRepo) GetServiceByName(serviceName string) (*ServiceDesc, error) {
+func (serviceRepo *ServiceRepository) GetServiceByName(serviceName string) (*ServiceDesc, error) {
 	query := `SELECT id, service_name, password_hash, created_at, updated_at FROM service WHERE email = $1`
 	var service ServiceDesc
 	var lastLogin sql.NullTime

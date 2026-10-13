@@ -10,6 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"internal/crypto"
+	"internal/storage"
 )
 
 type ServiceDesc struct {
@@ -28,16 +29,26 @@ var (
 )
 
 type AuthService struct {
-	ServiceRepo    *ServiceRepo
-	JwtSecret      []byte
-	AccessTokenTTL time.Duration
+	ServiceRepo      *ServiceRepository
+	JwtSecret        []byte
+	RefreshTokenRepo *RefreshTokenRepository
+	AccessTokenTTL   time.Duration
 }
 
-func NewAuthService(serviceRepo *ServiceRepo, jwtSecret string, accessTokenTTL time.Duration) *AuthService {
+func NewAuthService(dbPath string, jwtSecret string, accessTokenTTL time.Duration) *AuthService {
+
+	var db *sql.DB
+
+	db = storage.NewDatabase(dbPath)
+
+	serviceRepo := InitServiceRepo(db)
+	refreshTokenRepo := InitRefreshTokenRepo(db)
+
 	return &AuthService{
-		ServiceRepo:    serviceRepo,
-		JwtSecret:      []byte(jwtSecret),
-		AccessTokenTTL: accessTokenTTL,
+		ServiceRepo:      serviceRepo,
+		JwtSecret:        []byte(jwtSecret),
+		AccessTokenTTL:   accessTokenTTL,
+		RefreshTokenRepo: refreshTokenRepo,
 	}
 }
 
