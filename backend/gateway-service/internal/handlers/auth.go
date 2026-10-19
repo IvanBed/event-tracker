@@ -1,10 +1,11 @@
-package auth
+package handlers
 
 import (
 	"encoding/json"
 	"errors"
 	"internal/auth"
 	"net/http"
+	"time"
 )
 
 type AuthHandler struct {
@@ -66,7 +67,8 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token string `json:"token"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -76,8 +78,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
-	// Attempt to login
-	token, err := h.authService.Login(req.ServiceName, req.Password)
+	// Define refresh token TTL (e.g., 7 days)
+	refreshTokenTTL := 7 * 24 * time.Hour
+	// Attempt to login with refresh token generation
+	accessToken, refreshToken, err := h.authService.LoginWithRefresh(req.ServiceName, req.Password, refreshTokenTTL)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
@@ -86,8 +90,41 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	// Return the token
-	response := LoginResponse{Token: token}
+	// Return the tokens
+	response := LoginResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+type RefreshResponse struct {
+	Token string `json:"access_token"`
+}
+
+func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	var req RefreshRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+	// Attempt to refresh the token
+	token, err := h.authService.RefreshAccessToken(req.RefreshToken)
+	if err != nil {
+		if errors.Is(err, auth.ErrInvalidToken) || errors.Is(err, auth.ErrExpiredToken) {
+			http.Error(w, "Invalid or expired refresh token", http.StatusUnauthorized)
+		} else {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+	// Return the new access token
+	response := RefreshResponse{Token: token}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }

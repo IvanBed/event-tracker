@@ -27,6 +27,7 @@ type ServiceRepository struct {
 }
 
 func InitServiceRepo(db *sql.DB) *ServiceRepository {
+
 	return &ServiceRepository{db: db}
 }
 

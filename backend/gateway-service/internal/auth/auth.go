@@ -38,9 +38,7 @@ type AuthService struct {
 func NewAuthService(dbPath string, jwtSecret string, accessTokenTTL time.Duration) *AuthService {
 
 	var db *sql.DB
-
 	db = storage.NewDatabase(dbPath)
-
 	serviceRepo := InitServiceRepo(db)
 	refreshTokenRepo := InitRefreshTokenRepo(db)
 
@@ -104,7 +102,7 @@ func (authService *AuthService) Login(serviceName, password string) (string, err
 		return "", ErrInvalidCredentials
 	}
 	// Verify the password
-	if err := crypto.CheckPasswordHash(password, service.Password); err != nil {
+	if !crypto.CheckPasswordHash(password, service.Password) {
 		return "", ErrInvalidCredentials
 	}
 
@@ -135,4 +133,56 @@ func (authService *AuthService) Register(serviceName, password string) (*Service
 		return nil, err
 	}
 	return service, nil
+}
+
+func (s *AuthService) LoginWithRefresh(serviceName, password string, refreshTokenTTL time.Duration) (accessToken string, refreshToken string, err error) {
+
+	service, err := s.ServiceRepo.GetServiceByName(serviceName)
+	if err != nil {
+		return "", "", ErrInvalidCredentials
+	}
+	// Verify the password
+	if !crypto.CheckPasswordHash(password, service.Password) {
+		return "", "", ErrInvalidCredentials
+	}
+
+	// Generate an access token
+	accessToken, err = s.generateAccessToken(user)
+	if err != nil {
+		return "", "", err
+	}
+	// Create a refresh token
+	token, err := s.RefreshTokenRepo.CreateRefreshToken(user.ID, refreshTokenTTL)
+	if err != nil {
+		return "", "", err
+	}
+	return accessToken, token.Token, nil
+}
+
+// RefreshAccessToken creates a new access token using a refresh token
+func (s *AuthService) RefreshAccessToken(refreshTokenString string) (string, error) {
+	// Retrieve the refresh token
+	token, err := s.tokenRepo.GetRefreshToken(refreshTokenString)
+	if err != nil {
+		return "", ErrInvalidToken
+	}
+	// Check if the token is valid
+	if token.Revoked {
+		return "", ErrInvalidToken
+	}
+	// Check if the token has expired
+	if time.Now().After(token.ExpiresAt) {
+		return "", ErrExpiredToken
+	}
+	// Get the user
+	user, err := s.userRepo.GetUserByID(token.UserID)
+	if err != nil {
+		return "", err
+	}
+	// Generate a new access token
+	accessToken, err := s.generateAccessToken(user)
+	if err != nil {
+		return "", err
+	}
+	return accessToken, nil
 }
