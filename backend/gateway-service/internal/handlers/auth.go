@@ -3,7 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
-	"internal/auth"
+	"gateway/internal/auth"
 	"net/http"
 	"time"
 )
@@ -30,13 +30,13 @@ type RegisterResponse struct {
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	// Parse the request body
+
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
-	// Validate input
+
 	if req.ServiceName == "" || req.Password == "" {
 		http.Error(w, "Service name and password are required", http.StatusBadRequest)
 		return
@@ -53,7 +53,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := RegisterResponse{
-		Id:          service.ID.String(),
+		Id:          service.Id.String(),
 		ServiceName: service.ServiceName,
 	}
 	w.Header().Set("Content-Type", "application/json")

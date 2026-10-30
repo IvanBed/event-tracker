@@ -1,6 +1,6 @@
-FROM golang:alpine AS builder
+FROM golang:alpine AS gateway
 
-WORKDIR /build
+WORKDIR /gateway
 
 COPY . .
 
@@ -10,12 +10,12 @@ ADD go.sum .
 
 RUN go mod download
 
-RUN go build -o producer producer.go
+RUN go build -o gateway ./cmd/main
 
 FROM alpine
 
 WORKDIR /build
 
-COPY --from=builder /build/producer /build/producer
+COPY --from=gateway /build/gateway /build/gateway
 
-CMD [". /producer"]
+CMD [". /gateway"]

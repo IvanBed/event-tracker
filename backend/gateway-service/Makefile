@@ -1,9 +1,9 @@
 init:
-	go mod init main
+	go mod init gateway
 	go mod tidy
 	
 build:
-	go build -o producer producer.go
+	go build -o gateway ./cmd/main
 
 clear:
-	rm producer
+	rm gateway

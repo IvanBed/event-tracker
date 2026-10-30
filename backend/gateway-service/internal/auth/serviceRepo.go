@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -32,47 +34,49 @@ func InitServiceRepo(db *sql.DB) *ServiceRepository {
 }
 
 func (serviceRepo *ServiceRepository) CreateService(ctx context.Context, ServiceName string, PasswordHash string) (*ServiceDesc, error) {
-
+	service := &ServiceDesc{
+		Id:          uuid.New(),
+		ServiceName: ServiceName,
+		Password:    PasswordHash,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
 	query := `
-        INSERT INTO service (name, password_hash, created_at, updated_at)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO users (id, service_name, password_hash, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5)
     `
-	var service ServiceDesc
-
-	now := time.Now()
-	result, err := serviceRepo.db.ExecContext(ctx, query,
-		ServiceName,
-		PasswordHash,
-		now,
-		now,
-	)
-	if err != nil {
-		// Check for unique constraint violation
-		if isUniqueConstraintError(err) {
-			return nil, ErrDuplicateKey
-		}
-		return nil, err
-	}
-
-	id, err := result.LastInsertId()
+	_, err := serviceRepo.db.Exec(query, service.Id, service.ServiceName, service.Password, service.CreatedAt, service.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
-
-	service.Id = string(id)
-	service.ServiceName = ServiceName
-	service.Password = PasswordHash
-	service.CreatedAt = now
-	service.UpdatedAt = now
-
-	return &service, nil
+	return service, nil
 }
 
 func (serviceRepo *ServiceRepository) GetServiceByName(serviceName string) (*ServiceDesc, error) {
-	query := `SELECT id, service_name, password_hash, created_at, updated_at FROM service WHERE email = $1`
+	query := `SELECT id, service_name, password_hash, created_at, updated_at FROM service WHERE service_name = $1`
 	var service ServiceDesc
 	var lastLogin sql.NullTime
 	err := serviceRepo.db.QueryRow(query, serviceName).Scan(
+		&service.Id,
+		&service.ServiceName,
+		&service.Password,
+		&service.CreatedAt,
+		&lastLogin,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if lastLogin.Valid {
+		service.UpdatedAt = lastLogin.Time
+	}
+	return &service, nil
+}
+
+func (serviceRepo *ServiceRepository) GetServiceByID(id uuid.UUID) (*ServiceDesc, error) {
+	query := `SELECT id, service_name, password_hash, created_at, updated_at FROM users WHERE id = $1`
+	var service ServiceDesc
+	var lastLogin sql.NullTime
+	err := serviceRepo.db.QueryRow(query, id).Scan(
 		&service.Id,
 		&service.ServiceName,
 		&service.Password,

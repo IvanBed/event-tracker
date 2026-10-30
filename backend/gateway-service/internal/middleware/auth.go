@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"context"
-	"internal/auth"
+	"gateway/internal/auth"
 	"net/http"
 	"strings"
 

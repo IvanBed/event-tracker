@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 
-	"internal/crypto"
-	"internal/storage"
+	"gateway/internal/crypto"
+	"gateway/internal/storage"
 )
 
 type ServiceDesc struct {
-	Id          string
+	Id          uuid.UUID
 	ServiceName string
 	Password    string
 	CreatedAt   time.Time
@@ -33,12 +34,13 @@ type AuthService struct {
 	JwtSecret        []byte
 	RefreshTokenRepo *RefreshTokenRepository
 	AccessTokenTTL   time.Duration
+	DBPtr            *sql.DB
 }
 
 func NewAuthService(dbPath string, jwtSecret string, accessTokenTTL time.Duration) *AuthService {
 
 	var db *sql.DB
-	db = storage.NewDatabase(dbPath)
+	db, _ = storage.NewDatabase(dbPath)
 	serviceRepo := InitServiceRepo(db)
 	refreshTokenRepo := InitRefreshTokenRepo(db)
 
@@ -47,7 +49,12 @@ func NewAuthService(dbPath string, jwtSecret string, accessTokenTTL time.Duratio
 		JwtSecret:        []byte(jwtSecret),
 		AccessTokenTTL:   accessTokenTTL,
 		RefreshTokenRepo: refreshTokenRepo,
+		DBPtr:            db,
 	}
+}
+
+func (authService *AuthService) DestroyAuthService() {
+	authService.DBPtr.Close()
 }
 
 //, jwtSecret: []byte("test-secret"), accessTokenTTL: 25
@@ -147,12 +154,12 @@ func (s *AuthService) LoginWithRefresh(serviceName, password string, refreshToke
 	}
 
 	// Generate an access token
-	accessToken, err = s.generateAccessToken(user)
+	accessToken, err = s.generateAccessToken(service)
 	if err != nil {
 		return "", "", err
 	}
 	// Create a refresh token
-	token, err := s.RefreshTokenRepo.CreateRefreshToken(user.ID, refreshTokenTTL)
+	token, err := s.RefreshTokenRepo.CreateRefreshToken(service.Id, refreshTokenTTL)
 	if err != nil {
 		return "", "", err
 	}
@@ -162,7 +169,7 @@ func (s *AuthService) LoginWithRefresh(serviceName, password string, refreshToke
 // RefreshAccessToken creates a new access token using a refresh token
 func (s *AuthService) RefreshAccessToken(refreshTokenString string) (string, error) {
 	// Retrieve the refresh token
-	token, err := s.tokenRepo.GetRefreshToken(refreshTokenString)
+	token, err := s.RefreshTokenRepo.GetRefreshToken(refreshTokenString)
 	if err != nil {
 		return "", ErrInvalidToken
 	}
@@ -175,7 +182,7 @@ func (s *AuthService) RefreshAccessToken(refreshTokenString string) (string, err
 		return "", ErrExpiredToken
 	}
 	// Get the user
-	user, err := s.userRepo.GetUserByID(token.UserID)
+	user, err := s.ServiceRepo.GetServiceByID(token.ServiceID)
 	if err != nil {
 		return "", err
 	}
