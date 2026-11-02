@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +19,12 @@ import (
 	"gateway/internal/handlers"
 	"gateway/internal/middleware"
 	"gateway/internal/producer"
+)
+
+const (
+	_shutdownPeriod      = 15 * time.Second
+	_shutdownHardPeriod  = 3 * time.Second
+	_readinessDrainDelay = 5 * time.Second
 )
 
 func loggingMiddleware(next http.Handler) http.Handler {
@@ -60,6 +67,8 @@ func main() {
 	signalContex, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	loadEnv()
+
 	kafkaHost := args[1]
 	kafkaPort := args[2]
 	APIPort := args[3]
@@ -75,6 +84,10 @@ func main() {
 	go producerState.MainLoop(&wg)
 
 	r := mux.NewRouter()
+
+	fmt.Println("DATABASE_URL ", os.Getenv("DATABASE_URL"))
+	fmt.Println("JWT_SECRET ", os.Getenv("JWT_SECRET"))
+
 	authService := auth.NewAuthService(os.Getenv("DATABASE_URL"), os.Getenv("JWT_SECRET"), 15*time.Minute)
 	if authService == nil {
 		fmt.Println("Could not init auth service")
@@ -83,8 +96,7 @@ func main() {
 	defer authService.DestroyAuthService()
 
 	authHandler := handlers.NewAuthHandler(authService)
-	userHandler := handlers.NewUserHandler(authService.ServiceRepo)
-	buttonEvents := handlers.NewUserHandler(producerState.InputCh)
+	buttonEvents := handlers.NewEventsHandler(producerState.InputCh)
 
 	r.HandleFunc("/api/auth/register", authHandler.Register).Methods("POST")
 	r.HandleFunc("/api/auth/login", authHandler.Login).Methods("POST")
@@ -94,18 +106,54 @@ func main() {
 
 	protected := r.PathPrefix("/api").Subrouter()
 	protected.Use(middleware.AuthMiddleware(authService))
-	protected.HandleFunc("/profile", userHandler.Profile).Methods("GET")
+	//protected.HandleFunc("/profile", authService.Profile).Methods("GET")
 
-	err = http.ListenAndServe(":"+APIPort, r)
-	if err != nil {
-		log.Printf("")
+	ongoingCtx, stopOngoingGracefully := context.WithCancel(context.Background())
+	server := &http.Server{
+		Addr:    ":" + APIPort,
+		Handler: r,
+		BaseContext: func(_ net.Listener) context.Context {
+			return ongoingCtx
+		},
 	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		log.Println("Server starting on :" + APIPort)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			panic(err)
+		}
+	}()
 
 	<-signalContex.Done()
+	stop()
 	producerState.EndCh <- true
+	log.Println("Received shutdown signal, shutting down.")
+
+	time.Sleep(_readinessDrainDelay)
+	log.Println("Readiness check propagated, now waiting for ongoing requests to finish.")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), _shutdownPeriod)
+	defer cancel()
+
+	err = server.Shutdown(shutdownCtx)
+	stopOngoingGracefully()
+	if err != nil {
+		log.Println("Failed to wait for ongoing requests to finish, waiting for forced cancellation.")
+		time.Sleep(_shutdownHardPeriod)
+	}
+	log.Println("Server shut down gracefully.")
 	wg.Wait()
 
 	return
 }
 
-//curl -d '{"buttonId":"1", "buttonName":"test", "clicksCnt":"1"}' -H "Content-Type: application/json" -X POST http://localhost:22007/post_buttons_events
+//curl -d '{"buttonId":"1", "buttonName":"test", "clicksCnt":"1"}' -H "Content-Type: application/json" -X POST http://localhost:20007/api/post_buttons_events
+/*
+curl -X POST http://localhost:20007/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ServiceName": "test",
+    "Password": "SecureP@ssw0rd!"
+  }'*/

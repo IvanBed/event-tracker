@@ -1,6 +1,7 @@
 package producer
 
 import (
+	"fmt"
 	"log"
 	"strconv"
 	"sync"
@@ -57,6 +58,7 @@ func (this *ProducerState) MainLoop(wg *sync.WaitGroup) {
 		case be = <-this.InputCh:
 			this.writeAsync(be)
 		case <-this.EndCh:
+			fmt.Println("End!")
 			return
 		}
 	}

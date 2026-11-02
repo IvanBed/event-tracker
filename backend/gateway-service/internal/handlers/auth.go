@@ -48,7 +48,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Service name  already in use", http.StatusConflict)
 			return
 		}
-		http.Error(w, "Error creating service", http.StatusInternalServerError)
+		http.Error(w, "Error creating service"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 

@@ -40,7 +40,12 @@ type AuthService struct {
 func NewAuthService(dbPath string, jwtSecret string, accessTokenTTL time.Duration) *AuthService {
 
 	var db *sql.DB
-	db, _ = storage.NewDatabase(dbPath)
+	db, err := storage.NewDatabase(dbPath)
+
+	if err != nil {
+		return nil
+	}
+
 	serviceRepo := InitServiceRepo(db)
 	refreshTokenRepo := InitRefreshTokenRepo(db)
 

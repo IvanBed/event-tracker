@@ -3,20 +3,21 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"gateway/internal/producer"
 	"net/http"
 )
 
-type ButtonEvents struct {
+/*type ButtonEvents struct {
 	buttonId   int
 	buttonName string
 	clicksCnt  int
-}
+}*/
 
 type EventsHandler struct {
-	buttonEventsCh chan ButtonEvents
+	buttonEventsCh chan producer.ButtonEvents
 }
 
-func NewEventsHandler(buttonEventsCh chan ButtonEvents) *EventsHandler {
+func NewEventsHandler(buttonEventsCh chan producer.ButtonEvents) *EventsHandler {
 	return &EventsHandler{
 		buttonEventsCh: buttonEventsCh,
 	}
@@ -24,7 +25,7 @@ func NewEventsHandler(buttonEventsCh chan ButtonEvents) *EventsHandler {
 
 func (eventsHandler *EventsHandler) ButtonEventsHandler(w http.ResponseWriter, r *http.Request) {
 
-	var be ButtonEvents
+	var be producer.ButtonEvents
 
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST requests are allowed!", http.StatusMethodNotAllowed)

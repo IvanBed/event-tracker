@@ -95,6 +95,14 @@ services:
     image: 'postgres:16' 
     container_name: 'db'
     ports:
-      - '5432:5432'    
-    volumes: 
-      - 
+      - '65432:5432'    
+    #volumes: 
+    #  - 
+
+  sqlite:
+    image: nouchka/sqlite3:latest
+    container_name: 'auth_storage'
+    stdin_open: true
+    tty: true
+    volumes:
+      - /tmp/auth_storage/:/root/db/

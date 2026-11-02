@@ -15,15 +15,6 @@ var (
 	ErrInvalidInput = errors.New("invalid input")
 )
 
-const schema = `
-CREATE TABLE IF NOT EXISTS service (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    service_name TEXT NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-);`
-
 type ServiceRepository struct {
 	db *sql.DB
 }
@@ -42,7 +33,7 @@ func (serviceRepo *ServiceRepository) CreateService(ctx context.Context, Service
 		UpdatedAt:   time.Now(),
 	}
 	query := `
-        INSERT INTO users (id, service_name, password_hash, created_at, updated_at)
+        INSERT INTO services (id, service_name, password_hash, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5)
     `
 	_, err := serviceRepo.db.Exec(query, service.Id, service.ServiceName, service.Password, service.CreatedAt, service.UpdatedAt)
@@ -53,7 +44,7 @@ func (serviceRepo *ServiceRepository) CreateService(ctx context.Context, Service
 }
 
 func (serviceRepo *ServiceRepository) GetServiceByName(serviceName string) (*ServiceDesc, error) {
-	query := `SELECT id, service_name, password_hash, created_at, updated_at FROM service WHERE service_name = $1`
+	query := `SELECT id, service_name, password_hash, created_at, updated_at FROM services WHERE service_name = $1`
 	var service ServiceDesc
 	var lastLogin sql.NullTime
 	err := serviceRepo.db.QueryRow(query, serviceName).Scan(
@@ -73,7 +64,7 @@ func (serviceRepo *ServiceRepository) GetServiceByName(serviceName string) (*Ser
 }
 
 func (serviceRepo *ServiceRepository) GetServiceByID(id uuid.UUID) (*ServiceDesc, error) {
-	query := `SELECT id, service_name, password_hash, created_at, updated_at FROM users WHERE id = $1`
+	query := `SELECT id, service_name, password_hash, created_at, updated_at FROM services WHERE id = $1`
 	var service ServiceDesc
 	var lastLogin sql.NullTime
 	err := serviceRepo.db.QueryRow(query, id).Scan(
