@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,6 +18,7 @@ import (
 	"gateway/internal/handlers"
 	"gateway/internal/middleware"
 	"gateway/internal/producer"
+	"gateway/internal/webserver"
 )
 
 const (
@@ -42,7 +42,7 @@ func loadEnv() {
 		log.Println("No .env file found, using environment variables")
 	}
 
-	requiredVars := []string{"DATABASE_URL", "JWT_SECRET"}
+	requiredVars := []string{"DATABASE_URL", "JWT_SECRET", "KAFKA_HOST", "KAFKA_PORT", "SERVER_PORT"}
 	for _, v := range requiredVars {
 		if os.Getenv(v) == "" {
 			log.Fatalf("Required environment variable %s is not set", v)
@@ -53,40 +53,37 @@ func loadEnv() {
 func main() {
 	var wg sync.WaitGroup
 	var producerState *producer.ProducerState
-	args := os.Args
+	var serverState *webserver.ServerState
+	//args := os.Args
 
-	if len(args) < 3 {
+	/*if len(args) < 3 {
 		fmt.Println("Please specify the Kafka IP address and port")
 		return
 	}
 	if len(args) < 4 {
 		fmt.Println("Please specify the API port")
 		return
-	}
+	}*/
 
 	signalContex, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	loadEnv()
 
-	kafkaHost := args[1]
-	kafkaPort := args[2]
-	APIPort := args[3]
+	//kafkaHost := args[1]
+	//kafkaPort := args[2]
+	//APIPort := args[3]
 
-	producerState, err := producer.NewProducerState(kafkaHost, kafkaPort)
+	producerState, err := producer.NewProducerState(os.Getenv("KAFKA_HOST"), os.Getenv("KAFKA_PORT"))
 	if err != nil {
 		fmt.Println("Could not create ProducerState")
 		//log.Printf("")
 		return
 	}
 	defer producerState.Close()
+
 	wg.Add(1)
 	go producerState.MainLoop(&wg)
-
-	r := mux.NewRouter()
-
-	fmt.Println("DATABASE_URL ", os.Getenv("DATABASE_URL"))
-	fmt.Println("JWT_SECRET ", os.Getenv("JWT_SECRET"))
 
 	authService := auth.NewAuthService(os.Getenv("DATABASE_URL"), os.Getenv("JWT_SECRET"), 15*time.Minute)
 	if authService == nil {
@@ -98,58 +95,36 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authService)
 	buttonEvents := handlers.NewEventsHandler(producerState.InputCh)
 
+	r := mux.NewRouter()
 	r.HandleFunc("/api/auth/register", authHandler.Register).Methods("POST")
 	r.HandleFunc("/api/auth/login", authHandler.Login).Methods("POST")
 	r.HandleFunc("/api/auth/refresh", authHandler.RefreshToken).Methods("POST")
-	r.HandleFunc("/api/post_buttons_events", buttonEvents.ButtonEventsHandler).Methods("POST")
 	r.Use(loggingMiddleware)
 
 	protected := r.PathPrefix("/api").Subrouter()
 	protected.Use(middleware.AuthMiddleware(authService))
-	//protected.HandleFunc("/profile", authService.Profile).Methods("GET")
+	protected.HandleFunc("/post_buttons_events", buttonEvents.ButtonEventsHandler).Methods("POST")
 
-	ongoingCtx, stopOngoingGracefully := context.WithCancel(context.Background())
-	server := &http.Server{
-		Addr:    ":" + APIPort,
-		Handler: r,
-		BaseContext: func(_ net.Listener) context.Context {
-			return ongoingCtx
-		},
-	}
+	serverState = webserver.NewServerState(os.Getenv("SERVER_PORT"), r)
+	defer serverState.DestroyServerState()
+
 	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		log.Println("Server starting on :" + APIPort)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			panic(err)
-		}
-	}()
+	go serverState.MainLoop(&wg)
 
 	<-signalContex.Done()
 	stop()
+
 	producerState.EndCh <- true
-	log.Println("Received shutdown signal, shutting down.")
-
-	time.Sleep(_readinessDrainDelay)
-	log.Println("Readiness check propagated, now waiting for ongoing requests to finish.")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), _shutdownPeriod)
-	defer cancel()
-
-	err = server.Shutdown(shutdownCtx)
-	stopOngoingGracefully()
-	if err != nil {
-		log.Println("Failed to wait for ongoing requests to finish, waiting for forced cancellation.")
-		time.Sleep(_shutdownHardPeriod)
-	}
-	log.Println("Server shut down gracefully.")
+	serverState.GracefulShutdown()
 	wg.Wait()
 
 	return
 }
 
-//curl -d '{"buttonId":"1", "buttonName":"test", "clicksCnt":"1"}' -H "Content-Type: application/json" -X POST http://localhost:20007/api/post_buttons_events
+//curl -H "Authorization: Bearer $ACCESS_TOKEN" -d '{"buttonId":"1", "buttonName":"test", "clicksCnt":"1"}' -H "Content-Type: application/json" -X POST http://localhost:20007/api/post_buttons_events
+
+//curl -d '{"buttonId":"1", "buttonName":"test", "clicksCnt":"1"}' -H "Content-Type: application/json" -X POST http://localhost:20007/api/api/post_buttons_events
+
 /*
 curl -X POST http://localhost:20007/api/auth/register \
   -H "Content-Type: application/json" \
@@ -157,3 +132,12 @@ curl -X POST http://localhost:20007/api/auth/register \
     "ServiceName": "test",
     "Password": "SecureP@ssw0rd!"
   }'*/
+
+/*
+ curl -X POST http://localhost:20007/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ServiceName": "test",
+    "password": "SecureP@ssw0rd!"
+  }'
+*/

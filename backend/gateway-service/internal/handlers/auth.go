@@ -48,7 +48,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Service name  already in use", http.StatusConflict)
 			return
 		}
-		http.Error(w, "Error creating service"+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Error creating service "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -86,7 +86,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		} else {
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			http.Error(w, "Internal server error "+err.Error(), http.StatusInternalServerError)
 		}
 		return
 	}

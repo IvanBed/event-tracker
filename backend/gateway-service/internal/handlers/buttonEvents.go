@@ -47,5 +47,4 @@ func (eventsHandler *EventsHandler) ButtonEventsHandler(w http.ResponseWriter, r
 	fmt.Println("Send data to topic buttons_events")
 	eventsHandler.buttonEventsCh <- be
 	w.WriteHeader(http.StatusOK)
-
 }

@@ -11,11 +11,21 @@ import (
 
 const schema = `
 CREATE TABLE IF NOT EXISTS services (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL,
     service_name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);`
+
+const schema2 = `
+CREATE TABLE refresh_tokens (
+    id UUID PRIMARY KEY NOT NULL,
+    service_id UUID NOT NULL REFERENCES services (id) ON DELETE CASCADE,
+    token VARCHAR(255) UNIQUE NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked BOOLEAN NOT NULL DEFAULT FALSE
 );`
 
 func InitializeServiceSchema(db *sql.DB, schema string) error {

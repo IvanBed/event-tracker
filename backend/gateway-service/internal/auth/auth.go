@@ -62,8 +62,6 @@ func (authService *AuthService) DestroyAuthService() {
 	authService.DBPtr.Close()
 }
 
-//, jwtSecret: []byte("test-secret"), accessTokenTTL: 25
-
 func (authService *AuthService) generateAccessToken(service *ServiceDesc) (string, error) {
 	// Set the expiration time
 	expirationTime := time.Now().Add(time.Duration(authService.AccessTokenTTL))

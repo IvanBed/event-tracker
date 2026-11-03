@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,6 +37,9 @@ func (serviceRepo *ServiceRepository) CreateService(ctx context.Context, Service
         INSERT INTO services (id, service_name, password_hash, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5)
     `
+
+	fmt.Println(query)
+
 	_, err := serviceRepo.db.Exec(query, service.Id, service.ServiceName, service.Password, service.CreatedAt, service.UpdatedAt)
 	if err != nil {
 		return nil, err
